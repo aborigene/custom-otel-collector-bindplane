@@ -1,0 +1,9 @@
+# build artifacts
+/bin/
+/_build/
+/.keys/
+/.collector-config.yaml
+
+# go
+*.test
+*.out

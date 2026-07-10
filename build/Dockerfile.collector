@@ -1,0 +1,34 @@
+# Dockerfile.collector — builds the BindPlane-compatible collector via the OpenTelemetry
+# Collector Builder (ocb) using build/manifest.yaml, then ships a minimal non-root image.
+#
+# Build context is the REPOSITORY ROOT:
+#   docker build -f build/Dockerfile.collector -t fieldcrypto-collector:dev .
+
+# ── Stage 1: build the collector binary with ocb ──────────────────────────────────
+FROM golang:1.26 AS build
+WORKDIR /src
+
+# ocb pinned to the same OTel minor as the manifest (otelcol_version 0.155.0).
+RUN go install go.opentelemetry.io/collector/cmd/builder@v0.155.0
+
+# Copy the whole repo so the manifest's `replace ... => ..` finds the local processor.
+COPY . .
+
+# Generate + compile. output_path (./_build) is created next to the manifest's module.
+RUN builder --config build/manifest.yaml \
+    && /src/_build/custom-otel-collector-bindplane --help >/dev/null
+
+# Also build the decryptor and ship it in the SAME image. With an emptyDir keystore the
+# keys live only inside the collector pod, so decryption is done by `kubectl exec`-ing
+# this binary (exec runs it directly — no shell required in the distroless image).
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/decryptor ./cmd/decryptor
+
+# ── Stage 2: minimal runtime ───────────────────────────────────────────────────────
+FROM gcr.io/distroless/static-debian12:nonroot
+WORKDIR /
+COPY --from=build /src/_build/custom-otel-collector-bindplane /custom-otel-collector-bindplane
+COPY --from=build /out/decryptor /decryptor
+# 10001 = the distroless "nonroot" uid.
+USER 10001:10001
+ENTRYPOINT ["/custom-otel-collector-bindplane"]
+CMD ["--config", "/etc/otel/config.yaml"]

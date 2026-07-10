@@ -1,0 +1,36 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          { "key": "service.name", "value": { "stringValue": "sample-app" } }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": { "name": "sample" },
+          "logRecords": [
+            {
+              "timeUnixNano": "1720000000000000000",
+              "severityText": "INFO",
+              "body": { "stringValue": "customer CPF 529.982.247-25 completed checkout" },
+              "attributes": [
+                { "key": "user.email", "value": { "stringValue": "alice@example.com" } },
+                { "key": "user.document", "value": { "stringValue": "52998224725" } },
+                { "key": "user.card", "value": { "stringValue": "4111111111111111" } }
+              ]
+            },
+            {
+              "timeUnixNano": "1720000001000000000",
+              "severityText": "INFO",
+              "body": { "stringValue": "rejected CPF 111.111.111-11 on submit" },
+              "attributes": [
+                { "key": "user.email", "value": { "stringValue": "bob@test.org" } }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+# ODB / OpenTelemetry Collector Builder (ocb) manifest.
+#
+# ─── VERSION PINS (record kept per the lab prompt) ─────────────────────────────────
+# Baseline: BindPlane Distro for OpenTelemetry (BDOT) v1.103.0 (latest stable at build
+# time). It tracks:
+#   - OpenTelemetry Collector / contrib : v0.155.0  (unstable modules)
+#   - OpenTelemetry Collector core stable: v1.61.0   (pdata, component, consumer, ...)
+#   - bindplane-otel-collector / bindplane-otel-contrib components: v1.9.0 / v1.103.0
+# Every OTel module below is pinned to the SAME minor (v0.155.0 / v1.61.0). Mixing minors
+# will not compile. Bump the whole set together when moving to a new BDOT baseline.
+# ───────────────────────────────────────────────────────────────────────────────────
+
+dist:
+  module: github.com/aborigene/custom-otel-collector-bindplane
+  name: custom-otel-collector-bindplane
+  description: BindPlane-manageable OTel Collector with the custom fieldcrypto processor.
+  version: 0.1.0
+  output_path: ./_build
+  otelcol_version: 0.155.0
+
+extensions:
+  # BindPlane manageability: the bindplane extension is what makes this distro show up
+  # and behave like BDOT in the BindPlane UI (OpAMP reporting, config identity, etc.).
+  - gomod: github.com/observiq/bindplane-otel-collector/extension/bindplaneextension v1.103.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.155.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage/filestorage v0.155.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/pprofextension v0.155.0
+
+receivers:
+  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.155.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/filelogreceiver v0.155.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver v0.155.0
+
+processors:
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.155.0
+  - gomod: go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.155.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.155.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor v0.155.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourcedetectionprocessor v0.155.0
+  # ── The custom processor. Imported from THIS repo via the replace directive below. ──
+  - gomod: github.com/aborigene/custom-otel-collector-bindplane/fieldcryptoprocessor v0.1.0
+
+exporters:
+  - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.155.0
+  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.155.0
+  - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.155.0
+
+connectors:
+  - gomod: go.opentelemetry.io/collector/connector/forwardconnector v0.155.0
+
+# Point the custom processor's module at this repository so ocb builds against local
+# source. Path is relative to the generated go.mod under dist.output_path (./_build),
+# so ".." resolves back to the repository root. Run ocb from the repository root.
+replaces:
+  - github.com/aborigene/custom-otel-collector-bindplane => ..

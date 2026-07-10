@@ -1,0 +1,16 @@
+# BindPlane Agent Type resource.
+#
+# metadata.name MUST equal dist.name in build/manifest.yaml so BindPlane matches releases
+# to this Agent Type. Apply it to BindPlane via the BindPlane CLI BEFORE connecting the
+# collector:  bindplane apply -f deploy/bindplane-agent-type.yaml
+apiVersion: bindplane.observiq.com/v1
+kind: AgentType
+metadata:
+  name: custom-otel-collector-bindplane          # == dist.name in build/manifest.yaml
+spec:
+  repositoryLink: https://github.com/aborigene/custom-otel-collector-bindplane
+  platformArchSet:
+    - { platform: linux,   arch: amd64 }
+    - { platform: linux,   arch: arm64 }
+    - { platform: darwin,  arch: arm64 }
+    - { platform: windows, arch: amd64 }

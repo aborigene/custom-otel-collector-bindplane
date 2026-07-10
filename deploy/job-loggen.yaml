@@ -1,0 +1,35 @@
+# Smoke-test load generator. Sends OTLP logs to the collector Service so you can watch
+# the debug exporter mask/encrypt them. Re-run with `kubectl create` or delete+apply.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: fieldcrypto-loggen
+  namespace: fieldcrypto-lab
+spec:
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        app: fieldcrypto-loggen
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: loggen
+          image: fieldcrypto-loggen:dev
+          imagePullPolicy: IfNotPresent
+          args:
+            - --endpoint=fieldcrypto-collector:4318
+            - --protocol=http
+            - --count=100
+            - --rate=20
+            - --valid-cpf-pct=50
+            - --seed=1
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]

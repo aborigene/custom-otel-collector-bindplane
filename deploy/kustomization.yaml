@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Applied with:  kubectl apply -k deploy/
+resources:
+  - namespace.yaml
+  - configmap-collector.yaml
+  - deployment-collector.yaml
+  - job-loggen.yaml
+
+# NOTE: the keystore uses an emptyDir inside the collector pod (no PVC), so this runs on
+# EKS Fargate without EBS/EFS. Decryption is done by exec-ing the /decryptor binary that
+# is baked into the collector image (see the README) — there is no separate decryptor Job.
+#
+# bindplane-agent-type.yaml is a BindPlane resource, not a Kubernetes object, and is
+# applied with the BindPlane CLI:  bindplane apply -f deploy/bindplane-agent-type.yaml

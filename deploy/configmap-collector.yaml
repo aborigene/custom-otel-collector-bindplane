@@ -1,0 +1,59 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: collector-config
+  namespace: fieldcrypto-lab
+data:
+  config.yaml: |
+    # Collector config demonstrating ALL fieldcrypto features:
+    #   - whole-value mask of user.email
+    #   - in-field CPF masking on the log body (checksum-validated)
+    #   - reversible encryption of user.document and user.card
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_percentage: 80
+        spike_limit_percentage: 25
+      fieldcrypto:
+        key_dir: /var/keys
+        key_provider: disk
+        mask_value: "[MASKED]"
+        mask:
+          fields:
+            - user.email
+          patterns:
+            - { field: body, type: cpf }
+        encrypt:
+          fields:
+            - user.document
+            - user.card
+      batch: {}
+
+    exporters:
+      # The debug exporter prints processed records so you can SEE masking + encryption
+      # + encryption.key_id in the collector logs during the smoke test.
+      debug:
+        verbosity: detailed
+
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+      # The bindplane extension makes this collector manageable by BindPlane.
+      bindplane:
+
+    service:
+      extensions: [health_check, bindplane]
+      pipelines:
+        logs:
+          receivers: [otlp]
+          # fieldcrypto runs BEFORE batch so records are masked/encrypted prior to export.
+          processors: [memory_limiter, fieldcrypto, batch]
+          exporters: [debug]

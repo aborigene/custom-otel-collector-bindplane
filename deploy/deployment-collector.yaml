@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fieldcrypto-collector
+  namespace: fieldcrypto-lab
+  labels:
+    app: fieldcrypto-collector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fieldcrypto-collector
+  template:
+    metadata:
+      labels:
+        app: fieldcrypto-collector
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001                 # lets the non-root user write the keystore PVC
+      containers:
+        - name: collector
+          image: fieldcrypto-collector:dev
+          imagePullPolicy: IfNotPresent
+          args: ["--config", "/etc/otel/config.yaml"]
+          ports:
+            - { name: otlp-grpc, containerPort: 4317 }
+            - { name: otlp-http, containerPort: 4318 }
+            - { name: health, containerPort: 13133 }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          livenessProbe:
+            httpGet: { path: /, port: health }
+            initialDelaySeconds: 5
+          readinessProbe:
+            httpGet: { path: /, port: health }
+            initialDelaySeconds: 5
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: "1", memory: 512Mi }
+          volumeMounts:
+            - { name: config, mountPath: /etc/otel }
+            - { name: keystore, mountPath: /var/keys }
+      volumes:
+        - name: config
+          configMap:
+            name: collector-config
+        # emptyDir keystore: keys live in the pod for its lifetime (lost on restart, which
+        # is fine for the POC). No PVC/EBS/EFS needed, so this runs as-is on EKS Fargate.
+        # Decrypt by exec-ing the /decryptor binary baked into this image (see README).
+        - name: keystore
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fieldcrypto-collector
+  namespace: fieldcrypto-lab
+spec:
+  selector:
+    app: fieldcrypto-collector
+  ports:
+    - { name: otlp-grpc, port: 4317, targetPort: 4317 }
+    - { name: otlp-http, port: 4318, targetPort: 4318 }
+    - { name: health, port: 13133, targetPort: 13133 }
