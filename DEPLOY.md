@@ -12,11 +12,36 @@ those images, and run the POC on a real EKS Fargate cluster.
 
 ## 0. Prerequisites
 
-- **AWS CLI v2**, **Docker** (with `buildx`), **kubectl**, and **eksctl** installed.
+- **Go 1.26.5+**, **AWS CLI v2**, **Docker** (with `buildx`), **kubectl**, and **eksctl** installed.
 - An existing **EKS cluster** with `kubectl` pointed at it (`kubectl config current-context`).
+- Valid AWS credentials in your shell (`aws sts get-caller-identity` must succeed).
 - Permissions to create ECR repositories and (if needed) a Fargate profile.
 - **Architecture:** EKS Fargate runs **linux/amd64 only**. On Apple Silicon (M-series) you
   MUST build amd64 images or pods fail with `exec format error`. This guide does that.
+
+Quick checks before you start:
+
+```bash
+go version                         # must be >= 1.26.5
+aws sts get-caller-identity        # must succeed
+docker version
+docker buildx version
+kubectl config current-context
+eksctl version
+```
+
+If you are using temporary credentials (SSO/STS), refresh before building/pushing:
+
+```bash
+aws sts get-caller-identity
+# if you get ExpiredTokenException, refresh auth then re-run:
+# aws sso login --profile <your-profile>
+# export AWS_PROFILE=<your-profile>
+```
+
+> The repository Makefile installs the OpenTelemetry Collector Builder (ocb) into your Go
+> bin directory automatically; you do **not** need to preinstall `builder` or edit `PATH`
+> beyond having `go` available.
 
 ---
 
@@ -53,6 +78,23 @@ aws ecr get-login-password --region "$AWS_REGION" \
   | docker login --username AWS --password-stdin "$ECR"
 ```
 
+If pods later fail with `ErrImagePull` / `no basic auth credentials` on Fargate,
+the pod execution role is missing effective ECR auth (often due IAM boundaries).
+As an immediate namespace-scoped workaround, create an image pull secret and attach
+it to the default ServiceAccount used by this POC:
+
+```bash
+kubectl -n fieldcrypto-lab delete secret ecr-regcred --ignore-not-found
+kubectl -n fieldcrypto-lab create secret docker-registry ecr-regcred \
+  --docker-server="$ECR" \
+  --docker-username=AWS \
+  --docker-password="$(aws ecr get-login-password --region "$AWS_REGION")"
+kubectl -n fieldcrypto-lab patch serviceaccount default \
+  -p '{"imagePullSecrets":[{"name":"ecr-regcred"}]}'
+```
+
+Then recreate affected pods (or restart the deployment / recreate the job).
+
 > **Using ECR Public instead?** Repos live under `public.ecr.aws/<your-alias>/...` and login
 > is always against `us-east-1`:
 > `aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws`
@@ -77,6 +119,47 @@ docker buildx build --platform linux/amd64 \
   -t "$ECR/fieldcrypto-loggen:$IMAGE_TAG" --push .
 ```
 
+If the collector build gets stuck in repeated `go: found ... fieldcryptoprocessor ...`
+resolver output, use this deterministic fallback (generate collector sources locally,
+compile once, then package a minimal runtime image):
+
+```bash
+# 1) Generate collector sources (no module resolution in ocb step)
+rm -rf _build
+/home/ec2-user/go/bin/builder --skip-get-modules --skip-compilation --config build/manifest.yaml
+
+# 2) Bootstrap _build module and compile collector binary
+cd _build
+go mod init github.com/aborigene/custom-otel-collector-bindplane/customcol
+go mod edit -replace github.com/aborigene/custom-otel-collector-bindplane/fieldcryptoprocessor=../fieldcryptoprocessor
+go mod tidy
+GOFLAGS=-mod=mod go build -trimpath -ldflags='-s -w' -o custom-otel-collector-bindplane .
+cd ..
+
+# 3) Build decryptor and create runtime-only collector image context
+mkdir -p .image-build
+cp _build/custom-otel-collector-bindplane .image-build/custom-otel-collector-bindplane
+CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o .image-build/decryptor ./cmd/decryptor
+cat > .image-build/Dockerfile <<'EOF'
+FROM gcr.io/distroless/static-debian12:nonroot
+WORKDIR /
+COPY custom-otel-collector-bindplane /custom-otel-collector-bindplane
+COPY decryptor /decryptor
+USER 10001:10001
+ENTRYPOINT ["/custom-otel-collector-bindplane"]
+CMD ["--config", "/etc/otel/config.yaml"]
+EOF
+
+# 4) Push collector image
+aws ecr get-login-password --region "$AWS_REGION" \
+  | docker login --username AWS --password-stdin "$ECR"
+docker build -t "$ECR/fieldcrypto-collector:$IMAGE_TAG" .image-build
+docker push "$ECR/fieldcrypto-collector:$IMAGE_TAG"
+```
+
+This fallback does not change runtime behavior; it only avoids rebuilding the collector
+inside the Docker build stage.
+
 Verify the pushes:
 
 ```bash
@@ -85,6 +168,17 @@ aws ecr describe-images --repository-name fieldcrypto-collector --region "$AWS_R
 aws ecr describe-images --repository-name fieldcrypto-loggen --region "$AWS_REGION" \
   --query 'imageDetails[].imageTags' --output text
 ```
+
+Optional local verification before pushing:
+
+```bash
+make build                # builds ./bin/decryptor and ./bin/loggen
+make collector-binary     # builds ./_build/custom-otel-collector-bindplane via ocb
+make loggen               # builds fieldcrypto-loggen:dev locally
+```
+
+`make collector-binary` is the fastest repo-local check that the custom collector still
+compiles before you spend time on an amd64 image build and push.
 
 > **Alternative (build locally with the Makefile, then tag + push):**
 > ```bash
@@ -124,6 +218,12 @@ kustomize edit set image \
 cd ..
 ```
 
+You can confirm the rendered image references before applying:
+
+```bash
+kubectl kustomize deploy/ | grep 'image:'
+```
+
 > The manifests keep `imagePullPolicy: IfNotPresent`, which is correct for **immutable**
 > tags (`v1`, a git SHA, …). If you ever re-push the **same** tag, set the collector/loggen
 > `imagePullPolicy` to `Always` so nodes re-pull.
@@ -158,6 +258,13 @@ kubectl apply -k deploy/
 kubectl -n fieldcrypto-lab rollout status deploy/fieldcrypto-collector --timeout=300s
 ```
 
+Sanity checks immediately after apply:
+
+```bash
+kubectl -n fieldcrypto-lab get pods,svc,job
+kubectl -n fieldcrypto-lab describe deploy fieldcrypto-collector
+```
+
 > Fargate pods start slower than node pods (each gets its own microVM) — the 300s timeout
 > gives them room. `kubectl apply -k` also creates the `fieldcrypto-loggen` Job, so an
 > initial batch of load is sent automatically once the collector is Ready.
@@ -180,9 +287,12 @@ In the debug output you should see, for each record:
 
 ```bash
 kubectl -n fieldcrypto-lab delete job fieldcrypto-loggen --ignore-not-found
-kubectl -n fieldcrypto-lab create -f deploy/job-loggen.yaml
+kubectl kustomize deploy | awk 'BEGIN{RS="---"} /kind: Job/ {print}' | kubectl apply -f -
 kubectl -n fieldcrypto-lab logs job/fieldcrypto-loggen        # prints the emitted-PII summary
 ```
+
+Do not recreate the job with `kubectl create -f deploy/job-loggen.yaml`; that raw
+manifest still uses `fieldcrypto-loggen:dev` and bypasses the kustomize image rewrite.
 
 **Decrypt on-demand** — copy a `key_id` and a ciphertext value from the collector logs,
 then exec the `/decryptor` baked into the collector image (no shell needed):
@@ -225,3 +335,5 @@ aws ecr delete-repository --repository-name fieldcrypto-loggen --region "$AWS_RE
 | Collector `CrashLoopBackOff` | Check `kubectl -n fieldcrypto-lab logs deploy/fieldcrypto-collector`; usually a config typo in the ConfigMap. |
 | loggen `connection refused` | Collector not Ready yet, or Service name/port changed. It targets `fieldcrypto-collector:4318`. |
 | Keys gone after a restart | Expected with emptyDir — a fresh key is generated on start. For durable keys use a shared volume (EFS on Fargate) or the KMS provider. |
+| `aws sts get-caller-identity` fails | Your shell does not have valid AWS credentials or session tokens; fix that before step 2. |
+| `make collector-binary` fails locally | Verify `go version` is at least 1.26.5 and rerun from the repository root. |

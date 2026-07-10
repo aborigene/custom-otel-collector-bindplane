@@ -8,6 +8,14 @@ resources:
   - deployment-collector.yaml
   - job-loggen.yaml
 
+images:
+  - name: fieldcrypto-collector
+    newName: 537309256512.dkr.ecr.us-east-1.amazonaws.com/fieldcrypto-collector
+    newTag: v1
+  - name: fieldcrypto-loggen
+    newName: 537309256512.dkr.ecr.us-east-1.amazonaws.com/fieldcrypto-loggen
+    newTag: v1
+
 # NOTE: the keystore uses an emptyDir inside the collector pod (no PVC), so this runs on
 # EKS Fargate without EBS/EFS. Decryption is done by exec-ing the /decryptor binary that
 # is baked into the collector image (see the README) — there is no separate decryptor Job.

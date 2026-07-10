@@ -4,6 +4,8 @@ MODULE      := github.com/aborigene/custom-otel-collector-bindplane
 OCB_VERSION := v0.155.0
 IMG_PREFIX  ?= fieldcrypto
 IMG_TAG     ?= dev
+GO_BIN_DIR  := $(shell if [ -n "$$(go env GOBIN)" ]; then printf %s "$$(go env GOBIN)"; else printf %s "$$(go env GOPATH)/bin"; fi)
+BUILDER     := $(GO_BIN_DIR)/builder
 
 .PHONY: all test race bench vet build tidy \
         collector decryptor loggen images \
@@ -33,10 +35,10 @@ build:           ## build the CLIs into ./bin
 
 ## ── Collector (ocb) ───────────────────────────────────────────────────────────────
 ocb-install:     ## install the OpenTelemetry Collector Builder pinned to the manifest
-	go install go.opentelemetry.io/collector/cmd/builder@$(OCB_VERSION)
+	GOBIN="$(GO_BIN_DIR)" go install go.opentelemetry.io/collector/cmd/builder@$(OCB_VERSION)
 
 collector-binary: ocb-install ## build the collector binary via ocb into ./_build
-	builder --config build/manifest.yaml
+	$(BUILDER) --config build/manifest.yaml
 
 run-collector-local: collector-binary ## run the collector locally with a local keystore
 	mkdir -p .keys
