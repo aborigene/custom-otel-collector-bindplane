@@ -5,6 +5,11 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version without leading v (example: 0.1.1). Required for manual runs from branches."
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -60,7 +65,40 @@ jobs:
           pattern: distribution-artifacts-*
           merge-multiple: true
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: all-artifacts/**/*
+      - name: Resolve release tag
+        id: meta
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            tag="${GITHUB_REF_NAME}"
+          elif [[ -n "${{ inputs.version }}" ]]; then
+            tag="v${{ inputs.version }}"
+          else
+            echo "Manual runs require workflow_dispatch input: version (without leading v)."
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Resolved tag: $tag"
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${{ steps.meta.outputs.tag }}"
+
+          mapfile -t assets < <(find all-artifacts -type f | sort)
+          if [[ ${#assets[@]} -eq 0 ]]; then
+            echo "No artifacts found under all-artifacts/."
+            exit 1
+          fi
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag exists, uploading assets with --clobber"
+            gh release upload "$tag" "${assets[@]}" --clobber
+          else
+            echo "Creating release $tag"
+            gh release create "$tag" "${assets[@]}" \
+              --title "$tag" \
+              --notes "Automated release for $tag" \
+              --target "$GITHUB_SHA"
+          fi

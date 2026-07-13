@@ -9,3 +9,4 @@
 *.out
 artifacts/
 _build/
+install_unix.sh
