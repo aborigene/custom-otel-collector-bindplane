@@ -7,6 +7,8 @@ apiVersion: bindplane.observiq.com/v1
 kind: AgentType
 metadata:
   name: custom-otel-collector-bindplane          # == dist.name in build/manifest.yaml
+  displayName: Custom OTel Collector (FieldCrypto)
+  description: BindPlane-manageable OTel Collector with custom fieldcrypto processor.
 spec:
   repositoryLink: https://github.com/aborigene/custom-otel-collector-bindplane
   platformArchSet:
@@ -14,3 +16,4 @@ spec:
     - { platform: linux,   arch: arm64 }
     - { platform: darwin,  arch: arm64 }
     - { platform: windows, arch: amd64 }
+  versionClient: github
