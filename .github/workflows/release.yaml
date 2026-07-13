@@ -1,0 +1,60 @@
+name: Build Collector Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: linux
+            arch: amd64
+            artifact_name: linux-amd64
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build distribution artifacts
+        uses: observiq/otel-distro-builder@main
+        with:
+          os: ${{ matrix.os }}
+          arch: ${{ matrix.arch }}
+          manifest: build/manifest.yaml
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: distribution-artifacts-${{ matrix.artifact_name }}
+          path: |
+            artifacts/*.rpm
+            artifacts/*.tar.gz
+            artifacts/*.sbom.json
+            artifacts/*_checksums.txt
+          retention-days: 5
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-artifacts
+          pattern: distribution-artifacts-*
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: all-artifacts/**/*
