@@ -20,7 +20,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+
+      - name: Prepare local module replace paths
+        run: |
+          mkdir -p artifacts/.build
+          rm -rf artifacts/.build/fieldcryptoprocessor
+          cp -R fieldcryptoprocessor artifacts/.build/fieldcryptoprocessor
 
       - name: Build distribution artifacts
         uses: observiq/otel-distro-builder@main
