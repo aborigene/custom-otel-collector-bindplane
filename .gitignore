@@ -7,3 +7,5 @@
 # go
 *.test
 *.out
+artifacts/
+_build/
