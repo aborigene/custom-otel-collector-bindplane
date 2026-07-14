@@ -25,6 +25,9 @@ spec:
           image: fieldcrypto-collector:dev
           imagePullPolicy: IfNotPresent
           args: ["--config", "/etc/otel/config.yaml"]
+          envFrom:
+            - secretRef:
+                name: bindplane-agent-auth
           ports:
             - { name: otlp-grpc, containerPort: 4317 }
             - { name: otlp-http, containerPort: 4318 }
