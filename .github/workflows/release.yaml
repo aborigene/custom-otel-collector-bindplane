@@ -33,12 +33,33 @@ jobs:
           rm -rf artifacts/.build/fieldcryptoprocessor
           cp -R fieldcryptoprocessor artifacts/.build/fieldcryptoprocessor
 
-      - name: Build distribution artifacts
-        uses: observiq/otel-distro-builder@main
-        with:
-          os: ${{ matrix.os }}
-          arch: ${{ matrix.arch }}
-          manifest: build/manifest.yaml
+      - name: Build distribution artifacts (with heartbeat progress)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          heartbeat() {
+            while true; do
+              echo "[progress] Build still running... elapsed ${SECONDS}s"
+              sleep 30
+            done
+          }
+
+          heartbeat &
+          HB_PID=$!
+          trap 'kill "$HB_PID" 2>/dev/null || true' EXIT
+
+          docker run --rm \
+            -v "${{ github.workspace }}:/github/workspace" \
+            ghcr.io/observiq/otel-distro-builder:main \
+            --manifest /github/workspace/build/manifest.yaml \
+            --artifacts /github/workspace/artifacts \
+            --goos "${{ matrix.os }}" \
+            --goarch "${{ matrix.arch }}"
+
+          kill "$HB_PID" 2>/dev/null || true
+          wait "$HB_PID" 2>/dev/null || true
+          echo "[progress] Build finished in ${SECONDS}s"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
