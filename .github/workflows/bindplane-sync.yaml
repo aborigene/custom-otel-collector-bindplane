@@ -1,0 +1,84 @@
+name: Sync Agent to BindPlane
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to sync (leave empty for 'latest')"
+        required: false
+        type: string
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install BindPlane CLI
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL https://github.com/observiq/bindplane-op/releases/download/v1.101.0/bindplane_linux_amd64 -o "$HOME/.local/bin/bindplane"
+          chmod +x "$HOME/.local/bin/bindplane"
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Configure BindPlane Profile
+        run: |
+          bindplane profile set \
+            --api-key "${{ secrets.BINDPLANE_API_KEY }}" \
+            --remote-url "${{ secrets.BINDPLANE_REMOTE_URL }}"
+
+      - name: Extract Version from Release
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            # Extract version from tag (e.g., v0.1.0 -> 0.1.0)
+            VERSION="${{ github.event.release.tag_name }}"
+            VERSION="${VERSION#v}"
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+          elif [[ -n "${{ inputs.version }}" ]]; then
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=latest" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Sync Agent Version to BindPlane
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          
+          if [[ "$VERSION" == "latest" ]]; then
+            echo "Syncing latest version for custom-otel-collector-bindplane..."
+            bindplane sync agent-version \
+              --agent-type custom-otel-collector-bindplane \
+              --version latest
+          else
+            echo "Syncing version $VERSION for custom-otel-collector-bindplane..."
+            bindplane sync agent-version \
+              --agent-type custom-otel-collector-bindplane \
+              --version "$VERSION"
+          fi
+
+      - name: Verify Synced Version
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "Verifying synced version..."
+          bindplane get agent-versions -o table | grep -i custom-otel-collector-bindplane || {
+            echo "Warning: Custom agent version not found in table. This may be normal for newly synced versions."
+          }
+
+      - name: Notify Success
+        if: success()
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "✅ Successfully synced custom-otel-collector-bindplane version: $VERSION"
+          echo "Agent is now available for installation in BindPlane"
+
+      - name: Notify Failure
+        if: failure()
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "❌ Failed to sync custom-otel-collector-bindplane version: $VERSION"
+          echo "Check the logs above for details"
+          exit 1
