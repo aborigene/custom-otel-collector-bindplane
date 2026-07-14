@@ -19,7 +19,9 @@ jobs:
       - name: Install BindPlane CLI
         run: |
           mkdir -p "$HOME/.local/bin"
-          curl -fsSL https://app.bindplane.com/downloads/bindplane-linux-amd64 -o "$HOME/.local/bin/bindplane"
+          curl -fsSL https://storage.googleapis.com/bindplane-op-releases/bindplane/latest/bindplane-ee-linux-amd64.zip -o /tmp/bindplane.zip
+          unzip -q /tmp/bindplane.zip -d /tmp
+          mv /tmp/bindplane "$HOME/.local/bin/bindplane"
           chmod +x "$HOME/.local/bin/bindplane"
           echo "$HOME/.local/bin" >> $GITHUB_PATH
           "$HOME/.local/bin/bindplane" version
