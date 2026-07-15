@@ -14,14 +14,14 @@ dist:
   module: github.com/aborigene/custom-otel-collector-bindplane/customcol
   name: custom-otel-collector-bindplane
   description: BindPlane-manageable OTel Collector with the custom fieldcrypto processor.
-  version: v0.4.3
+  version: v0.4.4
   output_path: ./_build
   otelcol_version: 0.155.0
 
 extensions:
   # BindPlane manageability: the bindplane extension is what makes this distro show up
   # and behave like BDOT in the BindPlane UI (OpAMP reporting, config identity, etc.).
-  - gomod: github.com/observiq/bindplane-otel-collector v1.103.0
+  - gomod: github.com/observiq/bindplane-otel-collector/extension/bindplaneextension v1.95.0
     import: github.com/observiq/bindplane-otel-collector/extension/bindplaneextension
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/opampextension v0.155.0
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/bearertokenauthextension v0.155.0
@@ -43,8 +43,8 @@ processors:
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/metricstransformprocessor v0.155.0
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor v0.155.0
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourcedetectionprocessor v0.155.0
-  - gomod: github.com/observiq/bindplane-otel-contrib/processor/snapshotprocessor v1.9.0
-  - gomod: github.com/observiq/bindplane-otel-contrib/processor/throughputmeasurementprocessor v1.9.0
+  - gomod: github.com/observiq/bindplane-otel-collector/processor/snapshotprocessor v1.95.0
+  - gomod: github.com/observiq/bindplane-otel-collector/processor/throughputmeasurementprocessor v1.95.0
   # ── The custom processor as a dedicated submodule. ───────────────────────────────
   # v0.0.0 is intentional: source comes from local replace, so no remote tag needed.
   - gomod: github.com/aborigene/custom-otel-collector-bindplane/fieldcryptoprocessor v0.0.0
