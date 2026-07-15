@@ -11,10 +11,10 @@ resources:
 images:
   - name: fieldcrypto-collector
     newName: 537309256512.dkr.ecr.us-east-1.amazonaws.com/fieldcrypto-collector
-    newTag: v2
+    newTag: v3
   - name: fieldcrypto-loggen
     newName: 537309256512.dkr.ecr.us-east-1.amazonaws.com/fieldcrypto-loggen
-    newTag: v2
+    newTag: v3
 
 # NOTE: the keystore uses an emptyDir inside the collector pod (no PVC), so this runs on
 # EKS Fargate without EBS/EFS. Decryption is done by exec-ing the /decryptor binary that
