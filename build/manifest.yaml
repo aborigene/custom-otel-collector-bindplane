@@ -23,6 +23,8 @@ extensions:
   # and behave like BDOT in the BindPlane UI (OpAMP reporting, config identity, etc.).
   - gomod: github.com/observiq/bindplane-otel-collector v1.103.0
     import: github.com/observiq/bindplane-otel-collector/extension/bindplaneextension
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/opampextension v0.155.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/bearertokenauthextension v0.155.0
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.155.0
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage/filestorage v0.155.0
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/pprofextension v0.155.0

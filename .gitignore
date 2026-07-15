@@ -13,3 +13,4 @@ install_unix.sh
 
 # local bindplane auth secret (contains credentials)
 deploy/secret-bindplane-agent.yaml
+*.bak

@@ -46,13 +46,12 @@ data:
     extensions:
       health_check:
         endpoint: 0.0.0.0:13133
-      # OpAMP endpoint + auth are sourced from env vars injected from a Kubernetes Secret.
       opamp:
         server:
           ws:
             endpoint: ${env:OPAMP_ENDPOINT}
-        headers:
-          Authorization: "Secret-Key ${env:OPAMP_SECRET_KEY}"
+            headers:
+              Authorization: "Secret-Key ${env:OPAMP_SECRET_KEY}"
       # The bindplane extension makes this collector manageable by BindPlane.
       bindplane:
         opamp: opamp
