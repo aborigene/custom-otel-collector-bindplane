@@ -14,7 +14,7 @@ dist:
   module: github.com/aborigene/custom-otel-collector-bindplane/customcol
   name: custom-otel-collector-bindplane
   description: BindPlane-manageable OTel Collector with the custom fieldcrypto processor.
-  version: v0.4.2
+  version: v0.4.3
   output_path: ./_build
   otelcol_version: 0.155.0
 
@@ -33,13 +33,18 @@ receivers:
   - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.155.0
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/filelogreceiver v0.155.0
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver v0.155.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver v0.155.0
 
 processors:
   - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.155.0
   - gomod: go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.155.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.155.0
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.155.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/metricstransformprocessor v0.155.0
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor v0.155.0
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourcedetectionprocessor v0.155.0
+  - gomod: github.com/observiq/bindplane-otel-contrib/processor/snapshotprocessor v1.9.0
+  - gomod: github.com/observiq/bindplane-otel-contrib/processor/throughputmeasurementprocessor v1.9.0
   # ── The custom processor as a dedicated submodule. ───────────────────────────────
   # v0.0.0 is intentional: source comes from local replace, so no remote tag needed.
   - gomod: github.com/aborigene/custom-otel-collector-bindplane/fieldcryptoprocessor v0.0.0
