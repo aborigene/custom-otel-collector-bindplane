@@ -10,6 +10,11 @@ per-language client libraries — packaged as a **BindPlane-manageable** collect
 - Log generator: [`cmd/loggen`](cmd/loggen/main.go) — random OTLP logs for smoke tests.
 - ODB build + Kubernetes manifests + BindPlane Agent Type.
 
+## Build Strategy
+
+Build/release policy, ODB vs OCB guidance, and CI consolidation plan are documented in
+[BUILD_STRATEGY.md](BUILD_STRATEGY.md).
+
 ## Version pins
 
 Built from the **BDOT v1.103.0** baseline (the BindPlane Distro for OpenTelemetry), so the

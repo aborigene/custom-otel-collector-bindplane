@@ -5,7 +5,7 @@ cd /home/ec2-user/custom-otel-collector-bindplane
 
 usage() {
   cat <<'EOF'
-Usage: ./build/build_image.sh [--build-only | --build-deploy] [--image-tag TAG] [--region REGION]
+Usage: ./build/build_image.sh [--build-only | --build-deploy] [--image-tag TAG] [--region REGION] [collector source flags]
 
 Modes:
   --build-only     Build and push images only.
@@ -14,6 +14,15 @@ Modes:
 Options:
   --image-tag TAG  Image tag to use (default: v2)
   --region REGION  AWS region to use (default: us-east-1)
+  --collector-from-github-release
+                   Build collector image from a prebuilt GitHub release tarball
+                   instead of compiling it in Docker.
+  --release-version VERSION
+                   Release version to download for collector binary (default: IMAGE_TAG).
+                   Accepts both 0.4.2 and v0.4.2.
+  --github-repo OWNER/REPO
+                   GitHub repo hosting release artifacts
+                   (default: aborigene/custom-otel-collector-bindplane)
   -h, --help       Show this help text
 EOF
 }
@@ -21,6 +30,9 @@ EOF
 MODE="build-deploy"
 AWS_REGION="us-east-1"
 IMAGE_TAG="v2"
+COLLECTOR_FROM_GITHUB_RELEASE="false"
+RELEASE_VERSION=""
+GITHUB_REPO="aborigene/custom-otel-collector-bindplane"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -38,6 +50,18 @@ while [[ $# -gt 0 ]]; do
       ;;
     --region)
       AWS_REGION="$2"
+      shift 2
+      ;;
+    --collector-from-github-release)
+      COLLECTOR_FROM_GITHUB_RELEASE="true"
+      shift
+      ;;
+    --release-version)
+      RELEASE_VERSION="$2"
+      shift 2
+      ;;
+    --github-repo)
+      GITHUB_REPO="$2"
       shift 2
       ;;
     -h|--help)
@@ -62,6 +86,79 @@ echo "AWS_ACCOUNT_ID=$AWS_ACCOUNT_ID"
 echo "ECR=$ECR"
 echo "IMAGE_TAG=$IMAGE_TAG"
 echo "MODE=$MODE"
+echo "COLLECTOR_FROM_GITHUB_RELEASE=$COLLECTOR_FROM_GITHUB_RELEASE"
+echo "GITHUB_REPO=$GITHUB_REPO"
+
+build_collector_image_local() {
+  docker buildx build --platform linux/amd64 \
+    -f build/Dockerfile.collector \
+    -t "$ECR/fieldcrypto-collector:$IMAGE_TAG" \
+    --push .
+}
+
+build_collector_image_from_github_release() {
+  local version release_tag asset_name base_url tmpdir tarball checksum_file checksum_line sha
+
+  version="$RELEASE_VERSION"
+  if [[ -z "$version" ]]; then
+    version="$IMAGE_TAG"
+  fi
+
+  if [[ "$version" != v* ]]; then
+    release_tag="v$version"
+  else
+    release_tag="$version"
+  fi
+
+  asset_name="custom-otel-collector-bindplane_${release_tag}_linux_amd64.tar.gz"
+  base_url="https://github.com/${GITHUB_REPO}/releases/download/${release_tag}"
+
+  tmpdir="$(mktemp -d)"
+  tarball="${tmpdir}/${asset_name}"
+  checksum_file="${tmpdir}/checksums.txt"
+
+  echo "Downloading collector binary from GitHub release: ${base_url}/${asset_name}"
+  curl -fL "${base_url}/${asset_name}" -o "$tarball"
+
+  # Best-effort checksum validation when checksums asset exists.
+  if curl -fsSL "${base_url}/custom-otel-collector-bindplane_${release_tag}_checksums.txt" -o "$checksum_file"; then
+    checksum_line="$(grep " ${asset_name}$" "$checksum_file" || true)"
+    if [[ -n "$checksum_line" ]]; then
+      sha="$(echo "$checksum_line" | awk '{print $1}')"
+      echo "${sha}  ${tarball}" | sha256sum -c -
+    else
+      echo "WARN: Could not find ${asset_name} in checksums file. Continuing without checksum verification."
+    fi
+  else
+    echo "WARN: Checksums file not found for ${release_tag}. Continuing without checksum verification."
+  fi
+
+  tar -xzf "$tarball" -C "$tmpdir"
+
+  if [[ ! -f "${tmpdir}/custom-otel-collector-bindplane" ]]; then
+    echo "ERROR: Release artifact did not contain custom-otel-collector-bindplane binary." >&2
+    rm -rf "$tmpdir"
+    exit 1
+  fi
+
+  cat > "${tmpdir}/Dockerfile.collector.prebuilt" <<'EOF'
+FROM gcr.io/distroless/static-debian12:nonroot
+WORKDIR /
+COPY custom-otel-collector-bindplane /custom-otel-collector-bindplane
+USER 10001:10001
+ENTRYPOINT ["/custom-otel-collector-bindplane"]
+CMD ["--config", "/etc/otel/config.yaml"]
+EOF
+
+  echo "Building collector image from prebuilt release binary (no local compile)."
+  echo "NOTE: This mode ships only the collector binary; /decryptor is not included."
+  docker buildx build --platform linux/amd64 \
+    -f "${tmpdir}/Dockerfile.collector.prebuilt" \
+    -t "$ECR/fieldcrypto-collector:$IMAGE_TAG" \
+    --push "$tmpdir"
+
+  rm -rf "$tmpdir"
+}
 
 # 2) Ensure ECR repos exist
 for repo in fieldcrypto-collector fieldcrypto-loggen; do
@@ -74,10 +171,11 @@ aws ecr get-login-password --region "$AWS_REGION" \
   | docker login --username AWS --password-stdin "$ECR"
 
 # 4) Build + push images (NOTE: correct Dockerfile path is build/...)
-docker buildx build --platform linux/amd64 \
-  -f build/Dockerfile.collector \
-  -t "$ECR/fieldcrypto-collector:$IMAGE_TAG" \
-  --push .
+if [[ "$COLLECTOR_FROM_GITHUB_RELEASE" == "true" ]]; then
+  build_collector_image_from_github_release
+else
+  build_collector_image_local
+fi
 
 docker buildx build --platform linux/amd64 \
   -f build/Dockerfile.loggen \

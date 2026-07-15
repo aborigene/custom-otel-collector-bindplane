@@ -1,5 +1,9 @@
 # Deploying the fieldcrypto POC to a real Kubernetes cluster (EKS Fargate)
 
+Build/release governance (ODB vs OCB, CI policy, and single-source release path) is
+documented in [BUILD_STRATEGY.md](BUILD_STRATEGY.md). Use this deployment guide together
+with that policy document.
+
 Step-by-step guide to build the images, push them to Amazon ECR, point the manifests at
 those images, and run the POC on a real EKS Fargate cluster.
 
