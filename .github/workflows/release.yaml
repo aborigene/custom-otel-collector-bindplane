@@ -81,6 +81,27 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0  # Full history needed to check branch ancestry
+
+      - name: Verify tag is from main branch
+        run: |
+          set -euo pipefail
+          
+          # For tag triggers, verify the tag is reachable from main
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            tag="${GITHUB_REF_NAME}"
+            
+            # Verify tag commit is an ancestor of main (tag is on main)
+            if ! git merge-base --is-ancestor "$tag" main; then
+              echo "❌ Release aborted: Tag '$tag' is not on main branch"
+              echo "   Only tags pushed from main branch can trigger releases"
+              exit 1
+            fi
+            echo "✅ Verified: Tag '$tag' is on main branch"
+          else
+            echo "ℹ️ Manual workflow_dispatch run (not a tag trigger)"
+          fi
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
