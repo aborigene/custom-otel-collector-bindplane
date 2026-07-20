@@ -183,10 +183,10 @@ Keep these artifacts attached to each incident to avoid repeated guesswork.
 
 ## Immediate Next Steps
 
-1. Keep current v0.4.1 for testing, but treat it as release candidate until rollout activation is confirmed.
-2. Ensure next official release is tag-driven only.
-3. Add README and DEPLOY links to this file.
-4. Decide whether to keep local image deploy script as dev-only or replace it with a CI-triggered deploy workflow.
+1. Keep official releases tag-driven and workflow-only.
+2. Treat [release.yaml](.github/workflows/release.yaml) as the only release builder and [bindplane-sync.yaml](.github/workflows/bindplane-sync.yaml) as the only BindPlane sync path.
+3. Keep [build/build_image.sh](build/build_image.sh) for development and smoke tests only.
+4. Remove or update any docs that still describe local build steps as part of the release or sync path.
 
 ## Decision Record
 

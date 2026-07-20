@@ -12,6 +12,7 @@ on:
         type: string
 
 permissions:
+  actions: write
   contents: write
 
 jobs:
@@ -125,3 +126,17 @@ jobs:
               --notes "Automated release for $tag" \
               --target "$GITHUB_SHA"
           fi
+
+      - name: Trigger BindPlane sync workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${{ steps.meta.outputs.tag }}"
+          version="${tag#v}"
+          default_branch="${{ github.event.repository.default_branch }}"
+
+          echo "Dispatching bindplane-sync workflow for version: $version"
+          gh workflow run .github/workflows/bindplane-sync.yaml \
+            --ref "$default_branch" \
+            -f version="$version"

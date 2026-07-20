@@ -42,7 +42,9 @@ jobs:
             VERSION="${VERSION#v}"
             echo "version=$VERSION" >> $GITHUB_OUTPUT
           elif [[ -n "${{ inputs.version }}" ]]; then
-            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+            VERSION="${{ inputs.version }}"
+            VERSION="${VERSION#v}"
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
           else
             echo "version=latest" >> $GITHUB_OUTPUT
           fi

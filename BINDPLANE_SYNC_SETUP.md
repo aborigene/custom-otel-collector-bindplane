@@ -41,48 +41,39 @@ The workflow file `.github/workflows/bindplane-sync.yaml` is already in the repo
 
 ## Usage
 
-### Automatic Sync (On Release Published)
+### Preferred Release Flow (GitHub Actions)
 
-1. Build your collector:
-   ```bash
-   make build
-   ```
+Use the repository workflows as the source of truth for every release and sync.
 
-2. Create and push a new git tag:
+1. Update the version in [build/manifest.yaml](build/manifest.yaml) and create a git tag:
    ```bash
    git tag v0.2.0
    git push origin v0.2.0
    ```
 
-3. Create a GitHub Release:
-   - Go to https://github.com/aborigene/custom-otel-collector-bindplane/releases
-   - Click "Draft a new release"
-   - Select tag `v0.2.0`
-   - Add title and description
-   - Click "Publish release"
+2. GitHub Actions runs [Build Collector Release](.github/workflows/release.yaml) automatically for the tag push, builds the distribution artifacts, and publishes the GitHub Release.
 
-4. The workflow automatically runs and syncs the version to BindPlane
+3. The published release triggers [Sync Agent to BindPlane](.github/workflows/bindplane-sync.yaml) automatically, which syncs the new agent version into BindPlane.
 
-5. Verify in BindPlane:
+4. Verify the version in BindPlane:
    ```bash
    bindplane get agent-versions -o table | grep custom-otel-collector-bindplane
    ```
 
-### Manual Sync (Workflow Dispatch)
+### Manual Release or Sync via GitHub Actions
 
-If you need to sync a specific version manually:
+If you need to run the release or sync step manually, use GitHub Actions instead of local build commands:
 
-1. Go to https://github.com/aborigene/custom-otel-collector-bindplane/actions
-2. Click **Sync Agent to BindPlane** workflow
-3. Click **Run workflow**
-4. Enter the version (without `v` prefix, e.g., `0.2.0`) or leave empty for `latest`
-5. Click **Run workflow**
+1. Open the repository Actions tab.
+2. Run [Build Collector Release](.github/workflows/release.yaml) with the desired version input when you need to build a release from a branch.
+3. Run [Sync Agent to BindPlane](.github/workflows/bindplane-sync.yaml) if you need to resync an already published release or sync a specific version.
+4. Verify the version in BindPlane with `bindplane get agent-versions -o table | grep custom-otel-collector-bindplane`.
 
 ### Troubleshooting
 
 #### Workflow Failed: "Permission Denied"
 - Verify the BindPlane API key has **Organization Admin** role
-- Test locally: `bindplane sync agent-version --agent-type custom-otel-collector-bindplane --version latest`
+- Re-run the workflow from the Actions tab after confirming the secret values
 
 #### Workflow Failed: "Unable to Connect"
 - Verify `BINDPLANE_REMOTE_URL` is correct and accessible
@@ -91,46 +82,17 @@ If you need to sync a specific version manually:
 #### Version Not Appearing in BindPlane
 - Verify the release tag matches semantic versioning (e.g., `v0.2.0`)
 - Check release artifacts are present on GitHub
-- Try manual sync with `--all`: `bindplane sync agent-version --agent-type custom-otel-collector-bindplane --all`
+- Re-run [Sync Agent to BindPlane](.github/workflows/bindplane-sync.yaml) from the Actions tab for the target version
 
 #### Rate Limiting Issues
 - GitHub Actions runners may hit rate limits downloading BindPlane CLI
 - Solution: Pre-build and cache the CLI binary (advanced)
 
-## Advanced: Manual Sync Commands
-
-For one-time or emergency syncs without workflow:
-
-```bash
-# Set up BindPlane profile (one-time)
-bindplane profile set \
-  --api-key YOUR_API_KEY \
-  --remote-url https://app.bindplane.com
-
-# Sync latest version
-bindplane sync agent-version \
-  --agent-type custom-otel-collector-bindplane \
-  --version latest
-
-# Sync specific version
-bindplane sync agent-version \
-  --agent-type custom-otel-collector-bindplane \
-  --version 0.2.0
-
-# Sync all missing versions
-bindplane sync agent-version \
-  --agent-type custom-otel-collector-bindplane \
-  --all
-
-# Verify synced versions
-bindplane get agent-versions -o table | grep custom-otel-collector-bindplane
-```
-
 ## Release Workflow Summary
 
 1. **Code → Build → Test**
    - Make code changes
-   - Run `make build` locally to test
+   - Run the normal local test suite for development only
 
 2. **Tag & Push**
    ```bash
@@ -139,19 +101,14 @@ bindplane get agent-versions -o table | grep custom-otel-collector-bindplane
    ```
 
 3. **GitHub Actions Build** (automatic)
-   - Build collector binaries
-   - Create release with artifacts
+   - [release.yaml](.github/workflows/release.yaml) builds collector artifacts
+   - The workflow creates or updates the GitHub Release for that tag
 
-4. **GitHub Release** (manual)
-   - Publish release on GitHub UI
-   - Triggers `bindplane-sync.yaml` workflow
+4. **GitHub Actions Sync** (automatic)
+   - [bindplane-sync.yaml](.github/workflows/bindplane-sync.yaml) runs when the release is published
+   - The workflow syncs the released agent version into BindPlane
 
-5. **BindPlane Sync** (automatic)
-   - Workflow pulls release artifacts
-   - Syncs version to BindPlane
-   - Agent is now installable
-
-6. **Install Agent** (manual, in BindPlane UI)
+5. **Install Agent** (manual, in BindPlane UI)
    - Go to Install Agents
    - Select "Custom OTel Collector (FieldCrypto)"
    - Choose synced version
