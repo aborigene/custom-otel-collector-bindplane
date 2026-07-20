@@ -56,9 +56,10 @@ jobs:
             VERSION="${VERSION#v}"
             echo "version=$VERSION" >> $GITHUB_OUTPUT
           elif [[ -n "${{ inputs.version }}" ]]; then
-            # When dispatched from release.yaml, version is already formatted (e.g., v0.4.7)
-            # Keep it as-is for BindPlane to match GitHub release tags
+            # When dispatched from release.yaml, version comes with v prefix (e.g., v0.4.7)
+            # Strip it to get the version BindPlane expects (e.g., 0.4.7)
             VERSION="${{ inputs.version }}"
+            VERSION="${VERSION#v}"
             echo "version=$VERSION" >> $GITHUB_OUTPUT
           else
             echo "version=latest" >> $GITHUB_OUTPUT
