@@ -54,16 +54,31 @@ jobs:
           set -euo pipefail
           VERSION="${{ steps.version.outputs.version }}"
           
+          echo "=== BindPlane Sync Debug Info ==="
+          echo "Version: $VERSION"
+          echo "Agent Type: custom-otel-collector-bindplane"
+          bindplane version
+          
           if [[ "$VERSION" == "latest" ]]; then
             echo "Syncing latest version for custom-otel-collector-bindplane..."
             bindplane sync agent-version \
               --agent-type custom-otel-collector-bindplane \
-              --version latest
+              --version latest 2>&1 || {
+              echo "Sync failed. Checking available versions:"
+              bindplane get agent-versions -o table || true
+              exit 1
+            }
           else
             echo "Syncing version $VERSION for custom-otel-collector-bindplane..."
             bindplane sync agent-version \
               --agent-type custom-otel-collector-bindplane \
-              --version "$VERSION"
+              --version "$VERSION" 2>&1 || {
+              echo "Sync failed with version $VERSION"
+              echo "Checking BindPlane status and available versions:"
+              bindplane profile show || true
+              bindplane get agent-versions -o table || true
+              exit 1
+            }
           fi
 
       - name: Verify Synced Version
