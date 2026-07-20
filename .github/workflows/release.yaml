@@ -184,19 +184,19 @@ jobs:
         run: |
           set -euo pipefail
           tag="${{ steps.meta.outputs.tag }}"
-          version="${tag#v}"
           
           # Use main as default ref since it's the repository default branch
           dispatch_ref="main"
 
-          echo "Dispatching bindplane-sync workflow for version: $version on ref: $dispatch_ref"
+          echo "Dispatching bindplane-sync workflow for version: $tag on ref: $dispatch_ref"
           
           # Dispatch with explicit workflow file name and input parameter
+          # Pass full version tag (e.g., v0.4.7) so BindPlane can match it to GitHub release
           if gh workflow run bindplane-sync.yaml \
             --ref "$dispatch_ref" \
-            -f version="$version"; then
+            -f version="$tag"; then
             echo "✅ Workflow dispatch successful. Sync should start automatically."
           else
             echo "⚠️ Workflow dispatch failed. You may need to manually trigger sync from Actions tab."
-            echo "   Version: $version"
+            echo "   Version: $tag"
           fi
