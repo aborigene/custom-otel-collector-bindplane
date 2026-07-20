@@ -28,6 +28,29 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Update manifest version from git tag
+        run: |
+          set -euo pipefail
+          
+          # Get the version from either tag or workflow input
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            version="${GITHUB_REF_NAME}"
+          elif [[ -n "${{ github.event.inputs.version }}" ]]; then
+            version="v${{ github.event.inputs.version }}"
+          else
+            echo "No version available"
+            exit 1
+          fi
+          
+          echo "Updating manifest version to: $version"
+          
+          # Update build/manifest.yaml version field
+          sed -i "s/^  version: v[0-9]*\.[0-9]*\.[0-9]*$/  version: $version/" build/manifest.yaml
+          
+          # Verify the change
+          echo "Manifest version updated:"
+          grep "version:" build/manifest.yaml | head -1
+
       - name: Prepare local module replace paths
         run: |
           mkdir -p artifacts/.build
