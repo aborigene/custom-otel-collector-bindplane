@@ -92,8 +92,14 @@ jobs:
           if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
             tag="${GITHUB_REF_NAME}"
             
-            # Verify tag commit is an ancestor of main (tag is on main)
-            if ! git merge-base --is-ancestor "$tag" main; then
+            # Verify the tag commit exists
+            if ! git cat-file -t "$tag" >/dev/null 2>&1; then
+              echo "❌ Release aborted: Tag '$tag' not found"
+              exit 1
+            fi
+            
+            # Verify tag is an ancestor of origin/main (tag is on main branch)
+            if ! git merge-base --is-ancestor "$tag" origin/main; then
               echo "❌ Release aborted: Tag '$tag' is not on main branch"
               echo "   Only tags pushed from main branch can trigger releases"
               exit 1
