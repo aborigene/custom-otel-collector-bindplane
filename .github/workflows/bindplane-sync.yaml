@@ -50,72 +50,47 @@ jobs:
       - name: Extract Version from Release
         id: version
         run: |
-          if [[ "${{ github.event_name }}" == "release" ]]; then
-            # Extract version from tag (e.g., v0.1.0 -> 0.1.0)
-            VERSION="${{ github.event.release.tag_name }}"
-            VERSION="${VERSION#v}"
-            echo "version=$VERSION" >> $GITHUB_OUTPUT
-          elif [[ -n "${{ inputs.version }}" ]]; then
-            # When dispatched from release.yaml, version comes with v prefix (e.g., v0.4.7)
-            # Strip it to get the version BindPlane expects (e.g., 0.4.7)
-            VERSION="${{ inputs.version }}"
-            VERSION="${VERSION#v}"
-            echo "version=$VERSION" >> $GITHUB_OUTPUT
-          else
-            echo "version=latest" >> $GITHUB_OUTPUT
-          fi
+          # BindPlane's GitHub version client only supports 'latest'
+          # It cannot resolve explicit version numbers from GitHub releases
+          # So we always use 'latest', which points to the most recent release
+          echo "version=latest" >> $GITHUB_OUTPUT
 
       - name: Sync Agent Version to BindPlane
         run: |
           set -euo pipefail
-          VERSION="${{ steps.version.outputs.version }}"
           
           echo "=== BindPlane Sync Debug Info ==="
-          echo "Version: $VERSION"
+          echo "Syncing 'latest' version for custom-otel-collector-bindplane..."
           echo "Agent Type: custom-otel-collector-bindplane"
           bindplane version
           
-          if [[ "$VERSION" == "latest" ]]; then
-            echo "Syncing latest version for custom-otel-collector-bindplane..."
-            bindplane sync agent-version \
-              --agent-type custom-otel-collector-bindplane \
-              --version latest 2>&1 || {
-              echo "Sync failed. Checking available versions:"
-              bindplane get agent-versions -o table || true
-              exit 1
-            }
-          else
-            echo "Syncing version $VERSION for custom-otel-collector-bindplane..."
-            bindplane sync agent-version \
-              --agent-type custom-otel-collector-bindplane \
-              --version "$VERSION" 2>&1 || {
-              echo "Sync failed with version $VERSION"
-              echo "Checking BindPlane status and available versions:"
-              bindplane profile show || true
-              bindplane get agent-versions -o table || true
-              exit 1
-            }
-          fi
+          # Always use 'latest' - BindPlane's GitHub version client only supports this
+          # It will automatically discover and use the latest GitHub release
+          bindplane sync agent-version \
+            --agent-type custom-otel-collector-bindplane \
+            --version latest 2>&1 || {
+            echo "Sync failed. Checking available versions:"
+            bindplane get agent-versions -o table || true
+            exit 1
+          }
 
       - name: Verify Synced Version
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          echo "Verifying synced version..."
-          bindplane get agent-versions -o table | grep -i custom-otel-collector-bindplane || {
-            echo "Warning: Custom agent version not found in table. This may be normal for newly synced versions."
+          echo "Verifying synced agent..."
+          bindplane get agent-types | grep -i custom-otel-collector || {
+            echo "Warning: Custom agent type not found. This is unexpected."
+            exit 1
           }
 
       - name: Notify Success
         if: success()
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          echo "✅ Successfully synced custom-otel-collector-bindplane version: $VERSION"
+          echo "✅ Successfully synced custom-otel-collector-bindplane (latest)"
           echo "Agent is now available for installation in BindPlane"
 
       - name: Notify Failure
         if: failure()
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          echo "❌ Failed to sync custom-otel-collector-bindplane version: $VERSION"
+          echo "❌ Failed to sync custom-otel-collector-bindplane (latest)"
           echo "Check the logs above for details"
           exit 1

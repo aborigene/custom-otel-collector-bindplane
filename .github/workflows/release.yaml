@@ -188,15 +188,15 @@ jobs:
           # Use main as default ref since it's the repository default branch
           dispatch_ref="main"
 
-          echo "Dispatching bindplane-sync workflow for version: $tag on ref: $dispatch_ref"
+          echo "Dispatching bindplane-sync workflow for tag: $tag on ref: $dispatch_ref"
           
-          # Dispatch with explicit workflow file name and input parameter
-          # Pass full version tag (e.g., v0.4.7) so BindPlane can match it to GitHub release
+          # Always sync 'latest' - BindPlane's GitHub version client only understands 'latest'
+          # After release is published, 'latest' will automatically point to the new release
           if gh workflow run bindplane-sync.yaml \
             --ref "$dispatch_ref" \
-            -f version="$tag"; then
-            echo "✅ Workflow dispatch successful. Sync should start automatically."
+            -f version="latest"; then
+            echo "✅ Workflow dispatch successful. Sync will use latest available version."
           else
             echo "⚠️ Workflow dispatch failed. You may need to manually trigger sync from Actions tab."
-            echo "   Version: $tag"
+            echo "   Tag: $tag"
           fi
