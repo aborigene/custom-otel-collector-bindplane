@@ -1,3 +1,7 @@
+atal: Not a valid object name main
+❌ Release aborted: Tag 'v0.4.6-test' is not on main branch
+   Only tags pushed from main branch can trigger releases
+Error: Process completed with exit code 1.
 # BindPlane Auto-Sync Setup Guide
 
 This guide walks through setting up automatic BindPlane synchronization for the custom agent on every release.
