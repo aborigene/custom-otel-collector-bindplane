@@ -32,6 +32,20 @@ jobs:
           bindplane profile set \
             --api-key "${{ secrets.BINDPLANE_API_KEY }}" \
             --remote-url "${{ secrets.BINDPLANE_REMOTE_URL }}"
+          
+          echo "=== BindPlane Configuration ==="
+          bindplane profile show || echo "Profile show failed"
+          echo ""
+
+      - name: Check Agent Type Exists
+        run: |
+          echo "=== Checking if agent type exists ==="
+          bindplane get agent-types -o table | grep -i custom-otel-collector || {
+            echo "⚠️ Agent type 'custom-otel-collector-bindplane' not found in BindPlane"
+            echo "Available agent types:"
+            bindplane get agent-types -o table || true
+            exit 1
+          }
 
       - name: Extract Version from Release
         id: version
