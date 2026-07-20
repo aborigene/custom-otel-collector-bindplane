@@ -13,7 +13,11 @@ spec:
   repositoryLink: https://github.com/aborigene/custom-otel-collector-bindplane
   platformArchSet:
     - { platform: linux,   arch: amd64 }
-    - { platform: linux,   arch: arm64 }
-    - { platform: darwin,  arch: arm64 }
-    - { platform: windows, arch: amd64 }
   versionClient: github
+  github:
+    org: aborigene
+    repo: custom-otel-collector-bindplane
+    assetPatterns:
+      - pattern: ".*otelcol_v.*_linux_amd64\\.rpm$"
+        os: linux
+        arch: amd64
