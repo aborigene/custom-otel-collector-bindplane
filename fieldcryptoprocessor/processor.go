@@ -36,6 +36,7 @@ type fieldCrypto struct {
 
 	maskValue     string
 	maskFields    map[string]struct{}
+	maskTemplates map[string]string
 	encryptFields map[string]struct{}
 	// patternsByField maps a target field (attribute name or "body") to its rules.
 	patternsByField map[string][]compiledPattern
@@ -47,11 +48,15 @@ func newFieldCrypto(cfg *Config, logger *zap.Logger) *fieldCrypto {
 		logger:          logger,
 		maskValue:       cfg.MaskValue,
 		maskFields:      make(map[string]struct{}, len(cfg.Mask.Fields)),
+		maskTemplates:   make(map[string]string, len(cfg.Mask.FieldPatterns)),
 		encryptFields:   make(map[string]struct{}, len(cfg.Encrypt.Fields)),
 		patternsByField: make(map[string][]compiledPattern),
 	}
 	for _, f := range cfg.Mask.Fields {
 		fc.maskFields[f] = struct{}{}
+	}
+	for _, p := range cfg.Mask.FieldPatterns {
+		fc.maskTemplates[p.Field] = p.Pattern
 	}
 	for _, f := range cfg.Encrypt.Fields {
 		fc.encryptFields[f] = struct{}{}
@@ -73,6 +78,10 @@ func (fc *fieldCrypto) start(ctx context.Context) error {
 		switch p.Type {
 		case patternTypeCPF:
 			cp.re = cpfCandidateRegex
+		case patternTypeCNPJ:
+			cp.re = cnpjCandidateRegex
+		case patternTypeIBAN:
+			cp.re = ibanCandidateRegex
 		case patternTypeRegex:
 			cp.re = regexp.MustCompile(p.Regex) // already validated in Config.Validate
 		}
@@ -81,6 +90,7 @@ func (fc *fieldCrypto) start(ctx context.Context) error {
 	fc.logger.Debug("fieldcrypto started",
 		zap.String("key_provider", fc.cfg.KeyProvider),
 		zap.Int("mask_fields", len(fc.maskFields)),
+		zap.Int("mask_template_fields", len(fc.maskTemplates)),
 		zap.Int("encrypt_fields", len(fc.encryptFields)),
 		zap.Int("pattern_fields", len(fc.patternsByField)))
 	return nil
@@ -96,6 +106,20 @@ func (fc *fieldCrypto) applyPatterns(field, value string, patterns []compiledPat
 			// CPF-shaped numbers (and everything else) intact.
 			out = p.re.ReplaceAllStringFunc(out, func(m string) string {
 				if isValidCPF(m) {
+					return fc.maskValue
+				}
+				return m
+			})
+		case patternTypeCNPJ:
+			out = p.re.ReplaceAllStringFunc(out, func(m string) string {
+				if isValidCNPJ(m) {
+					return fc.maskValue
+				}
+				return m
+			})
+		case patternTypeIBAN:
+			out = p.re.ReplaceAllStringFunc(out, func(m string) string {
+				if isValidIBAN(m) {
 					return fc.maskValue
 				}
 				return m
@@ -128,6 +152,8 @@ func (fc *fieldCrypto) processMap(ctx context.Context, m pcommon.Map) {
 			}
 		case contains(fc.maskFields, k):
 			v.SetStr(fc.maskValue)
+		case fc.maskTemplates[k] != "":
+			v.SetStr(maskWithTemplate(s, fc.maskTemplates[k]))
 		default:
 			if pats, ok := fc.patternsByField[k]; ok {
 				v.SetStr(fc.applyPatterns(k, s, pats))
@@ -157,6 +183,8 @@ func (fc *fieldCrypto) processBody(ctx context.Context, body pcommon.Value, reco
 		}
 	case contains(fc.maskFields, bodyKey):
 		body.SetStr(fc.maskValue)
+	case fc.maskTemplates[bodyKey] != "":
+		body.SetStr(maskWithTemplate(s, fc.maskTemplates[bodyKey]))
 	default:
 		if pats, ok := fc.patternsByField[bodyKey]; ok {
 			body.SetStr(fc.applyPatterns(bodyKey, s, pats))

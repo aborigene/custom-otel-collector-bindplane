@@ -15,7 +15,9 @@ For each field the processor applies, in order:
    with AES-256-GCM ciphertext and the record attribute `encryption.key_id` records which
    key was used.
 2. **mask** — else if listed in `mask.fields`, the whole value is replaced with `mask_value`.
-3. **patterns** — else any `mask.patterns` targeting that field run (in-field masking).
+3. **field_patterns** — else if listed in `mask.field_patterns`, whole-field masking runs
+  using an `A`/`X` template while preserving punctuation.
+4. **patterns** — else any `mask.patterns` targeting that field run (in-field masking).
 
 `"body"` targets the log record body when it is a string.
 
@@ -30,8 +32,13 @@ processors:
     mask:
       fields:                   # whole-value replacement
         - user.email
+      field_patterns:           # whole-field A/X template masking
+        - { field: user.cpf, pattern: "AAAXAA" }
+        - { field: body, pattern: "AAXXXXA@AAXXXAA" }
       patterns:                 # in-field masking
-        - { field: body, type: cpf }                     # checksum-validated CPF
+        - { field: body, type: cpf }                      # checksum-validated CPF
+        - { field: body, type: cnpj }                     # checksum-validated CNPJ
+        - { field: body, type: iban }                     # mod-97 validated IBAN
         - { field: notes, type: regex, regex: "\\d{16}" } # every match masked
     encrypt:
       fields:                   # reversible encryption
@@ -40,8 +47,24 @@ processors:
 ```
 
 `Validate()` fails if: `key_provider` is not `disk`/`kms`; a pattern `type` is not
-`cpf`/`regex`; a `regex` pattern has no (or an invalid) `regex`; or a field appears in
-**both** `mask.fields` and `encrypt.fields`.
+`cpf`/`cnpj`/`iban`/`regex`; a `regex` pattern has no (or an invalid) `regex`;
+`mask.field_patterns` entries miss `field`/`pattern` or have no `A`/`X` tokens;
+or a field appears in **both** `mask.fields` and `encrypt.fields`.
+
+## Template masking (`mask.field_patterns`)
+
+`mask.field_patterns` applies to whole field values and supports a compact `A`/`X` syntax:
+
+- `A` keeps one alphanumeric character from the original value.
+- `X` masks one or more alphanumeric characters.
+- Non-alphanumeric characters (`.`, `-`, `/`, `@`, spaces, etc.) are preserved in place.
+- At least 40% of the original alphanumeric characters are masked, regardless of template.
+
+Examples:
+
+- `123.456.789-09` with `AAAXAA` -> `123.XXX.XXX-09`
+- `joao.silva@somedomain.com` with `AAXXXXA@AAXXXAA` preserves punctuation and masks
+  the required proportion of characters.
 
 ## CPF masking — explicit two-stage validation (`cpf.go`)
 
@@ -56,6 +79,16 @@ Masking runs a two-stage check for performance:
 filter; `hasCPFShape` is the inner guard. Only candidates where `isValidCPF` is true are
 masked — invalid CPF-shaped numbers are left intact. `cpf_bench_test.go` demonstrates the
 short-circuit.
+
+## CNPJ and IBAN masking
+
+- **CNPJ** uses a two-stage validation flow similar to CPF:
+  - shape gate (14 digits, not all identical)
+  - checksum validation with official weighted digits
+- **IBAN** uses normalized input (spaces and dashes removed, uppercased) and
+  ISO 13616 mod-97 validation.
+
+Only candidates that pass validation are masked, reducing false positives in free text.
 
 ## Encryption & keys (`crypto.go`, `kms_provider.go`)
 
