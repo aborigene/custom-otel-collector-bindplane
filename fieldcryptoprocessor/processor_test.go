@@ -128,3 +128,86 @@ func TestConsumeLogs_InvalidCPFLeftIntact(t *testing.T) {
 		t.Fatalf("invalid CPF should be intact: got %q want %q", got, want)
 	}
 }
+
+func TestConsumeLogs_CNPJAndIBANPatterns(t *testing.T) {
+	ctx := context.Background()
+	cfg := &Config{
+		KeyDir:      t.TempDir(),
+		KeyProvider: providerDisk,
+		MaskValue:   "[MASKED]",
+		Mask: MaskConfig{Patterns: []MaskPattern{
+			{Field: "body", Type: patternTypeCNPJ},
+			{Field: "body", Type: patternTypeIBAN},
+		}},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	p := &logsProcessor{fieldCrypto: newFieldCrypto(cfg, zap.NewNop()), next: nopLogsConsumer{}}
+	if err := p.Start(ctx, nil); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	ld := plog.NewLogs()
+	lr := ld.ResourceLogs().AppendEmpty().ScopeLogs().AppendEmpty().LogRecords().AppendEmpty()
+	lr.Body().SetStr("cnpj 11.444.777/0001-61 iban GB82 WEST 1234 5698 7654 32 invalid 11.444.777/0001-60")
+
+	if err := p.ConsumeLogs(ctx, ld); err != nil {
+		t.Fatalf("ConsumeLogs: %v", err)
+	}
+	got := ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0).Body().Str()
+	want := "cnpj [MASKED] iban [MASKED] invalid 11.444.777/0001-60"
+	if got != want {
+		t.Fatalf("got %q want %q", got, want)
+	}
+}
+
+func TestConsumeLogs_FieldTemplateMask(t *testing.T) {
+	ctx := context.Background()
+	cfg := &Config{
+		KeyDir:      t.TempDir(),
+		KeyProvider: providerDisk,
+		MaskValue:   "[MASKED]",
+		Mask: MaskConfig{FieldPatterns: []MaskFieldPattern{
+			{Field: "user.cpf", Pattern: "AAAXAA"},
+			{Field: "body", Pattern: "AAXXXXA@AAXXXAA"},
+		}},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	p := &logsProcessor{fieldCrypto: newFieldCrypto(cfg, zap.NewNop()), next: nopLogsConsumer{}}
+	if err := p.Start(ctx, nil); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	ld := plog.NewLogs()
+	lr := ld.ResourceLogs().AppendEmpty().ScopeLogs().AppendEmpty().LogRecords().AppendEmpty()
+	lr.Attributes().PutStr("user.cpf", "123.456.789-09")
+	lr.Body().SetStr("joao.silva@somedomain.com")
+
+	if err := p.ConsumeLogs(ctx, ld); err != nil {
+		t.Fatalf("ConsumeLogs: %v", err)
+	}
+
+	gotCPF, _ := ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0).Attributes().Get("user.cpf")
+	if gotCPF.Str() != "123.XXX.XXX-09" {
+		t.Fatalf("cpf template mask mismatch: got %q", gotCPF.Str())
+	}
+	gotBody := ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0).Body().Str()
+	if len(gotBody) != len("joao.silva@somedomain.com") {
+		t.Fatalf("email template mask changed size: got %d", len(gotBody))
+	}
+	if gotBody[4] != '.' || gotBody[10] != '@' || gotBody[21] != '.' {
+		t.Fatalf("email punctuation not preserved: got %q", gotBody)
+	}
+	masked := 0
+	for i := 0; i < len(gotBody); i++ {
+		if gotBody[i] == 'X' {
+			masked++
+		}
+	}
+	if masked < 9 {
+		t.Fatalf("email template mask is too weak: got %q", gotBody)
+	}
+}

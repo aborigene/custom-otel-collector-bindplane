@@ -12,6 +12,8 @@ const (
 	providerKMS  = "kms"
 
 	patternTypeCPF   = "cpf"
+	patternTypeCNPJ  = "cnpj"
+	patternTypeIBAN  = "iban"
 	patternTypeRegex = "regex"
 )
 
@@ -29,8 +31,19 @@ type MaskPattern struct {
 type MaskConfig struct {
 	// Fields are masked by whole-value replacement with MaskValue.
 	Fields []string `mapstructure:"fields"`
+	// FieldPatterns are whole-field masks driven by an A/X template.
+	FieldPatterns []MaskFieldPattern `mapstructure:"field_patterns"`
 	// Patterns are in-field masking rules (cpf / regex).
 	Patterns []MaskPattern `mapstructure:"patterns"`
+}
+
+// MaskFieldPattern masks a full field value using an A/X template.
+// A keeps one original alphanumeric character visible.
+// X masks one or more alphanumeric characters.
+// Non-alphanumeric characters (dot, dash, slash, spaces) are preserved.
+type MaskFieldPattern struct {
+	Field   string `mapstructure:"field"`
+	Pattern string `mapstructure:"pattern"`
 }
 
 // EncryptConfig lists fields to reversibly encrypt.
@@ -54,7 +67,7 @@ type Config struct {
 
 // Validate enforces the invariants described in the lab prompt:
 //   - key_provider must be "disk" or "kms"
-//   - every pattern type must be "cpf" or "regex"
+//   - every pattern type must be "cpf", "cnpj", "iban", or "regex"
 //   - a "regex" pattern must supply a compilable regex
 //   - a field may not appear in BOTH mask.fields and encrypt.fields
 func (c *Config) Validate() error {
@@ -69,6 +82,10 @@ func (c *Config) Validate() error {
 		switch p.Type {
 		case patternTypeCPF:
 			// no regex needed
+		case patternTypeCNPJ:
+			// no regex needed
+		case patternTypeIBAN:
+			// no regex needed
 		case patternTypeRegex:
 			if p.Regex == "" {
 				return fmt.Errorf("mask.patterns[%d] (field %q): type %q requires a regex", i, p.Field, patternTypeRegex)
@@ -77,8 +94,20 @@ func (c *Config) Validate() error {
 				return fmt.Errorf("mask.patterns[%d] (field %q): invalid regex: %w", i, p.Field, err)
 			}
 		default:
-			return fmt.Errorf("mask.patterns[%d] (field %q): invalid type %q: must be %q or %q",
-				i, p.Field, p.Type, patternTypeCPF, patternTypeRegex)
+			return fmt.Errorf("mask.patterns[%d] (field %q): invalid type %q: must be %q, %q, %q, or %q",
+				i, p.Field, p.Type, patternTypeCPF, patternTypeCNPJ, patternTypeIBAN, patternTypeRegex)
+		}
+	}
+
+	for i, p := range c.Mask.FieldPatterns {
+		if p.Field == "" {
+			return fmt.Errorf("mask.field_patterns[%d]: field is required", i)
+		}
+		if p.Pattern == "" {
+			return fmt.Errorf("mask.field_patterns[%d] (field %q): pattern is required", i, p.Field)
+		}
+		if !hasTemplateTokens(p.Pattern) {
+			return fmt.Errorf("mask.field_patterns[%d] (field %q): pattern must include at least one A or X token", i, p.Field)
 		}
 	}
 
