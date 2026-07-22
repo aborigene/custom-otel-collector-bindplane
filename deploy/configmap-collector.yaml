@@ -27,14 +27,26 @@ data:
         key_provider: disk
         mask_value: "[MASKED]"
         mask:
+          # Whole-value masking for email addresses
           fields:
             - user.email
+            - user.email_v2
+          # Template-based field masking (A/X syntax)
+          field_patterns:
+            - { field: user.cnpj, pattern: "XX.XXX.XXX/XXXX-XX" }
+            - { field: user.iban, pattern: "AAXXXXXXXXXXXX" }
+          # In-field pattern masking for PII in body
           patterns:
             - { field: body, type: cpf }
+            - { field: body, type: cnpj }
+            - { field: body, type: iban }
         encrypt:
+          # Reversible encryption for sensitive identifiers
           fields:
             - user.document
+            - user.document_v2
             - user.card
+            - user.card_v2
       batch: {}
 
     exporters:

@@ -38,9 +38,13 @@ type summary struct {
 	total       int
 	validCPFs   int
 	invalidCPFs int
+	validCNPJs  int
+	validIBANs  int
 	emails      int
 	documents   int
+	documentsV2 int
 	cards       int
+	cardsV2     int
 }
 
 func main() {
@@ -87,8 +91,8 @@ func run() error {
 		}
 	}
 
-	fmt.Printf("sent %d logs (seed=%d): valid_cpf=%d invalid_shaped=%d emails=%d documents=%d cards=%d\n",
-		s.total, *seed, s.validCPFs, s.invalidCPFs, s.emails, s.documents, s.cards)
+	fmt.Printf("sent %d logs (seed=%d): valid_cpf=%d invalid_shaped=%d valid_cnpj=%d valid_iban=%d emails=%d documents=%d documents_v2=%d cards=%d cards_v2=%d\n",
+		s.total, *seed, s.validCPFs, s.invalidCPFs, s.validCNPJs, s.validIBANs, s.emails, s.documents, s.documentsV2, s.cards, s.cardsV2)
 	return nil
 }
 
@@ -101,12 +105,16 @@ func buildLog(rng *rand.Rand, validCPFPct int, s *summary) plog.Logs {
 	lr.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
 	lr.SetSeverityText("INFO")
 
-	// Body: embed a valid or invalid-shaped CPF, or neither.
+	// Body: embed valid CPF/CNPJ/IBAN samples plus occasional invalid CPF-shaped value.
 	switch {
 	case rng.Intn(100) < validCPFPct:
 		cpf := randomValidCPF(rng)
-		lr.Body().SetStr("customer CPF " + cpf + " completed checkout")
+		cnpj := randomValidCNPJ(rng)
+		iban := randomValidIBAN(rng)
+		lr.Body().SetStr("customer CPF " + cpf + " CNPJ " + cnpj + " IBAN " + iban + " completed checkout")
 		s.validCPFs++
+		s.validCNPJs++
+		s.validIBANs++
 	case rng.Intn(2) == 0:
 		lr.Body().SetStr("rejected CPF " + randomInvalidCPFShaped(rng) + " on submit")
 		s.invalidCPFs++
@@ -120,16 +128,30 @@ func buildLog(rng *rand.Rand, validCPFPct int, s *summary) plog.Logs {
 		attrs.PutStr("user.document", digitsOnly(randomValidCPF(rng)))
 		s.documents++
 	}
+	// user.document_v2 — second sensitive field for encryption demo.
+	if rng.Intn(2) == 0 {
+		attrs.PutStr("user.document_v2", digitsOnly(randomValidCPF(rng)))
+		s.documentsV2++
+	}
 	// user.card — a 16-digit card-like number (target for encryption).
 	if rng.Intn(2) == 0 {
 		attrs.PutStr("user.card", randomDigits(rng, 16))
 		s.cards++
 	}
+	// user.card_v2 — second sensitive field for encryption demo.
+	if rng.Intn(2) == 0 {
+		attrs.PutStr("user.card_v2", randomDigits(rng, 16))
+		s.cardsV2++
+	}
 	// email — target for whole-value masking.
 	if rng.Intn(2) == 0 {
 		attrs.PutStr("user.email", randomEmail(rng))
+		attrs.PutStr("user.email_v2", randomEmail(rng))
 		s.emails++
 	}
+	// Also include CNPJ/IBAN as attributes for whole-field masking/encryption demos.
+	attrs.PutStr("user.cnpj", randomValidCNPJ(rng))
+	attrs.PutStr("user.iban", randomValidIBAN(rng))
 	// benign noise
 	attrs.PutStr("http.method", []string{"GET", "POST", "PUT"}[rng.Intn(3)])
 	attrs.PutInt("http.status_code", int64([]int{200, 201, 400, 500}[rng.Intn(4)]))
@@ -267,4 +289,57 @@ func randomEmail(rng *rand.Rand) string {
 	names := []string{"alice", "bob", "carol", "dave", "erin"}
 	domains := []string{"example.com", "test.org", "acme.io"}
 	return fmt.Sprintf("%s%d@%s", names[rng.Intn(len(names))], rng.Intn(1000), domains[rng.Intn(len(domains))])
+}
+
+func randomValidCNPJ(rng *rand.Rand) string {
+	var d [14]int
+	for {
+		for i := 0; i < 12; i++ {
+			d[i] = rng.Intn(10)
+		}
+		same := true
+		for i := 1; i < 12; i++ {
+			if d[i] != d[0] {
+				same = false
+				break
+			}
+		}
+		if !same {
+			break
+		}
+	}
+	w1 := []int{5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2}
+	w2 := []int{6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2}
+
+	sum := 0
+	for i := 0; i < 12; i++ {
+		sum += d[i] * w1[i]
+	}
+	v := 11 - (sum % 11)
+	if v >= 10 {
+		v = 0
+	}
+	d[12] = v
+
+	sum = 0
+	for i := 0; i < 13; i++ {
+		sum += d[i] * w2[i]
+	}
+	v = 11 - (sum % 11)
+	if v >= 10 {
+		v = 0
+	}
+	d[13] = v
+
+	return fmt.Sprintf("%d%d.%d%d%d.%d%d%d/%d%d%d%d-%d%d",
+		d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7], d[8], d[9], d[10], d[11], d[12], d[13])
+}
+
+func randomValidIBAN(rng *rand.Rand) string {
+	// Use a stable valid sample to keep downstream validations deterministic.
+	ibans := []string{
+		"GB82 WEST 1234 5698 7654 32",
+		"DE89 3704 0044 0532 0130 00",
+	}
+	return ibans[rng.Intn(len(ibans))]
 }

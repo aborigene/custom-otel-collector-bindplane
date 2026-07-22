@@ -1,0 +1,146 @@
+---
+# Configuration demonstrating all fieldcrypto capabilities:
+# - In-field CPF/CNPJ/IBAN masking in body text
+# - Template-based field masking (A/X pattern syntax)
+# - Whole-value email masking
+# - Reversible encryption of sensitive document/card fields
+#
+# Apply with: bindplane apply -f deploy/bindplane-config-fieldcrypto-demo.yaml
+#
+
+apiVersion: bindplane.observiq.com/v1
+kind: Configuration
+metadata:
+  name: fieldcrypto-demo
+  displayName: "FieldCrypto Demo (CPF/CNPJ/IBAN/Email/Encryption)"
+  description: "Demonstrates masking (patterns + templates) and encryption for PII fields"
+  labels:
+    demo: "true"
+    feature: "fieldcrypto"
+
+spec:
+  # Receivers: collect logs from OTLP
+  receivers:
+    - name: otlp
+      type: otlp
+      parameters:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+  # Processors: memory limiter, custom fieldcrypto, batch
+  processors:
+    - name: memory_limiter
+      type: memory_limiter
+      parameters:
+        check_interval: 1s
+        limit_percentage: 80
+        spike_limit_percentage: 25
+
+    # Custom fieldcrypto processor configuration
+    # Demonstrates:
+    #   1. In-field pattern masking: CPF/CNPJ/IBAN detection + validation
+    #   2. Whole-value masking: user.email fields
+    #   3. Template-based masking: user.cnpj, user.iban with A/X patterns
+    #   4. Encryption: user.document, user.card fields
+    - name: fieldcrypto
+      type: fieldcrypto
+      parameters:
+        key_dir: /var/keys
+        key_provider: disk
+        mask_value: "[MASKED]"
+        mask:
+          # Whole-value replacement for email fields
+          fields:
+            - user.email
+            - user.email_v2
+          # Template masking: preserve first/last chars, mask middle alphanumerics
+          # A = show one char, X = mask one or more alphanumerics
+          # Punctuation is preserved; at least 40% of alphanumerics must be masked
+          field_patterns:
+            - field: user.cnpj
+              pattern: "XX.XXX.XXX/XXXX-XX"
+            - field: user.iban
+              pattern: "AAXXXXXXXXXXXX"
+          # In-field pattern masking: only valid candidates are masked
+          patterns:
+            # CPF: 11 digits, modulo-11 checksum validation
+            - field: body
+              type: cpf
+            # CNPJ: 14 digits, modulo-11 checksum validation
+            - field: body
+              type: cnpj
+            # IBAN: country code + check digits + account, mod-97 validation
+            - field: body
+              type: iban
+
+    # Encryption: reversible AES-256-GCM with key management
+    # Encrypted values are stored as base64(nonce || sealed)
+    # Key ID is recorded in encryption.key_id attribute for decryption
+    - name: fieldcrypto
+      type: fieldcrypto
+      parameters:
+        key_dir: /var/keys
+        key_provider: disk
+        encrypt:
+          fields:
+            - user.document       # CPF for encryption demo
+            - user.document_v2    # Second sensitive ID
+            - user.card           # 16-digit card number
+            - user.card_v2        # Second sensitive card
+
+    - name: batch
+      type: batch
+      parameters:
+        send_batch_size: 100
+        timeout: 10s
+
+  # Exporters: debug (stdout) for smoke test visibility
+  exporters:
+    - name: debug
+      type: debug
+      parameters:
+        verbosity: detailed
+
+  # Extensions: health check + OpAMP for BindPlane management
+  extensions:
+    - name: health_check
+      type: health_check
+      parameters:
+        endpoint: 0.0.0.0:13133
+
+    - name: opamp
+      type: opamp
+      parameters:
+        server:
+          ws:
+            endpoint: ${env:OPAMP_ENDPOINT}
+            headers:
+              Authorization: "Secret-Key ${env:OPAMP_SECRET_KEY}"
+
+    - name: bindplane
+      type: bindplane
+      parameters:
+        opamp: opamp
+        measurements_interval: 1m
+        topology_interval: 1m
+
+  # Pipeline: logs flow through OTLP -> memory_limiter -> fieldcrypto -> batch -> debug
+  service:
+    extensions:
+      - health_check
+      - opamp
+      - bindplane
+    pipelines:
+      - name: logs
+        type: logs
+        receivers:
+          - otlp
+        processors:
+          - memory_limiter
+          - fieldcrypto  # Processor applied in sequence (mask -> encrypt)
+          - batch
+        exporters:
+          - debug
